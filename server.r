@@ -28,11 +28,12 @@ shinyServer(function(input, output, session) {
   dt.cluster.cln <- reactive({
     input$goButton
     
+    metric.list <- append(as.character(list('Player','Team','Position','Salary')),as.character(input$metrics))
+    n <- input$matches
+    
     isolate({
         Player.test <- input$Player
-        metric.list <- append(as.character(list('Player','Team','Position','Salary')),as.character(input$metrics))
-        n <- input$matches
-        
+
         dt.query <- subset(dt.raw, select = c(metric.list))   ### Create Data Frames of Selected Metrics
         dt.test <- dt.query[Player.test == Player]
         dt.test$Player <- NULL
@@ -45,7 +46,7 @@ shinyServer(function(input, output, session) {
         dt.query.cln$Position <-NULL
         dt.query.cln$Salary <-NULL
         
-        cluster <- nn2(dt.query.cln,query=dt.test,k=n+1)   ### Run Cluster
+        cluster <- nn2(dt.query.cln,query=dt.test,k=n)   ### Run Cluster
         
         matches <- as.data.frame(cluster$nn.idx)   ### Get Nearest Neighbors
         matches.cln <- matches[1,]
@@ -79,22 +80,40 @@ shinyServer(function(input, output, session) {
         dt.cluster <- dt.test
     })
   })
-   
-    ### Metrics List Output ###
   
-    output$xvar <- renderUI({
-      selectInput("xvar", "X-axis variable",choices = append(as.character(list('Distance')),input$metrics), selected = "Distance")
-    })
+  ### Full Data Set for Graph ###
+  
+  dt.final.cln <- reactive({
+    input$goButton
+    input$matches
+    input$metrics
     
-    output$yvar <- renderUI({
-      selectInput("yvar", "Y-axis variable",choices = append(as.character(list('Distance')),input$metrics), selected = "GameAvgPTS")
-    })
+    dt.graph <- isolate(dt.cluster.cln())
+    players <- as.character(dt.graph$Player)
+    dt.final <- dt.raw[0:0]
+    dt.final$Distance <- 0
+    
+    for(i in players){
+      dt.row <- dt.raw[i == Player]
+      dt.distance <- dt.graph[i == Player]
+      dt.row$Distance <- dt.distance$Distance
+      dt.final <- rbind(dt.final,dt.row)
+    }    
+    dt.final
+  })
+  
+  output$test.tbl <- renderDataTable({
+    if (is.null(dt.cluster.cln()))
+      return()
+    
+    data <- dt.final.cln()
+  },options = list(paging = FALSE))
   
     ### GGVIS Plot ###  
     PlayerChart <- reactive({
       if (is.null(dt.cluster.cln()))
         return()
-      
+        
       metric.list <- append(as.character(list('Player','Team','Salary','Position')),as.character(input$metrics))      
                          
       xvar_name <- names(metric.list)[metric.list == input$xvar]
@@ -103,7 +122,7 @@ shinyServer(function(input, output, session) {
       x.axis <- prop("x", as.symbol(input$xvar))
       y.axis <- prop("y", as.symbol(input$yvar))  
       
-      dt.cluster.cln %>%
+      dt.final.cln %>%
         ggvis(x = x.axis, 
               y = y.axis) %>%
         layer_points(size := 75, 
