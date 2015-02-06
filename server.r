@@ -4,6 +4,9 @@ library(RANN)
 library(data.table)
 
 dt.raw <- as.data.table(read.csv("Summary.csv"))
+dt.shot <- as.data.table(read.csv("ShotData.csv"))
+dt.shotPlayer <- as.data.table(read.csv("shotPlayer.csv"))
+dt.shot$shot_distance <- as.numeric(dt.shot$shot_distance)
 PlayerNames <- as.character(dt.raw$Player)
 
 shinyServer(function(input, output, session) {
@@ -23,6 +26,20 @@ shinyServer(function(input, output, session) {
            )  
   }
   
+  Shot_tooltip <- function(x) {
+    if (is.null(x)) return(NULL)
+    if (is.null(x$ID)) return(NULL)
+    
+    all_Shots <- isolate(dt.bestPlayer.cln())
+    Shot.tt <- all_Shots[all_Shots$ID == x$ID, ]
+    
+    paste0("<b>",Shot.tt$player,"</b><br>",
+           "Shot Type: ",Shot.tt$type,"<br>",
+           "Result: ",Shot.tt$result,"<br>",
+           "Distance from Hoop: ",Shot.tt$shot_distance,"<br>"
+    )  
+  }
+  
   
   ### Cluster Analysis ###
   dt.cluster.cln <- reactive({
@@ -30,11 +47,17 @@ shinyServer(function(input, output, session) {
     
     metric.list <- append(as.character(list('Player','Team','Position','Salary')),as.character(input$metrics))
     n <- input$matches
+    if(length(as.character(input$positions)) == 0){
+      positions <- as.character(list('PG','SG','SF','PF','C'))
+    }else{
+      positions <- as.character(input$positions)
+    }
     
     isolate({
         Player.test <- input$Player
 
         dt.query <- subset(dt.raw, select = c(metric.list))   ### Create Data Frames of Selected Metrics
+        dt.query <- dt.query[Position %in% positions | Player.test == Player]
         dt.test <- dt.query[Player.test == Player]
         dt.test$Player <- NULL
         dt.test$Team <- NULL
@@ -87,6 +110,7 @@ shinyServer(function(input, output, session) {
     input$goButton
     input$matches
     input$metrics
+    input$positions
     
     dt.graph <- isolate(dt.cluster.cln())
     players <- as.character(dt.graph$Player)
@@ -157,4 +181,181 @@ shinyServer(function(input, output, session) {
       data <- dt.cluster.cln()
     },options = list(paging = FALSE))
   
+
+
+### Shot Selection Tab ###
+
+    dt.shotData.cln <- reactive({
+      input$goButton2
+      
+      isolate({
+        shot.team <- input$shotTeam
+        shot.side <- as.character(input$shotSide)
+        
+        if(length(as.character(input$shotType)) == 0){
+          shotType <- as.character(list('Jump Bank Shot','Jump Shot'))
+        }else{
+          shotType <- as.character(input$shotType)
+        }
+        
+        distance.short <- as.numeric(as.character(input$shotDistance)[1])
+        distance.long <- as.numeric(as.character(input$shotDistance)[2])  
+        distance.average <- (distance.short + distance.long)/2
+      
+        shotData <- dt.shot[type %in% shotType & 
+                              shot_distance >= distance.short & 
+                              shot_distance <= distance.long & 
+                              shot_distance <= distance.long & 
+                              side %in% shot.side &
+                              team == shot.team]
+        shotData$factor <- 0
+        playersToFactor <- NULL
+        
+        
+        for(i in 1:nrow(shotData)){
+          if(shotData$player[i] %in% playersToFactor){
+            playersToFactor <- playersToFactor
+          }else{
+            playersToFactor <- as.character(c(playersToFactor, as.character(shotData$player[i])))
+          }
+        }
+        
+        Player <- playersToFactor
+        Inflection_Percentage <- NULL
+        Significance <- NULL
+        AIC <- NULL
+        
+        for(i in playersToFactor){
+          shotData$factor <- 0
+          name <- as.character(i)  
+          
+          for (i in 1:nrow(shotData)){
+            if(shotData$player[i] == name){
+              shotData$factor[i] <- 1
+            }
+          }
+          
+          reg <- glm(result ~ shot_distance + factor, data = shotData, family=binomial(link="probit"),na.action=na.pass)
+          
+          inflection.base <- as.numeric(pnorm(coef(reg)[1] + (coef(reg)[2] * distance.average)))
+          inflection.max <- as.numeric(pnorm(coef(reg)[1] + (coef(reg)[2] * distance.average) + coef(reg)[3]))
+          inflection.total <- round(as.numeric(inflection.max - inflection.base),digits=3)
+          
+          Inflection_Percentage <- as.character(c(Inflection_Percentage, as.character(inflection.total)))
+          Significance <- as.character(c(Significance, as.character(round(coef(summary(reg))[,4][3],digits=5))))
+          AIC <- as.character(c(AIC, as.character(round(AIC(reg),digits=1))))
+        }
+        
+        dt.summary <- as.data.table(cbind(Player,Inflection_Percentage,Significance,AIC))        
+      })
+    })
+    
+    ### Full Team Output ###
+    output$shot.tbl <- renderDataTable({
+      if (is.null(dt.shotData.cln()))
+        return()
+      
+      data <- dt.shotData.cln()
+    },options = list(paging = FALSE))
+
+
+    ### Best Player Algorithm ###
+    output$dt.bestPlayer <- renderText({
+      input$goButton2
+      
+      dt.summaryTeam <- isolate(dt.shotData.cln())
+      coef <- 0
+      bestPlayer <- NULL
+      
+      for(i in 1:nrow(dt.summaryTeam)){
+        if(dt.summaryTeam$Inflection_Percentage[i] > coef & dt.summaryTeam$Significance[i] < .1){
+          coef <- dt.summaryTeam$Inflection_Percentage[i]
+          bestPlayer <- dt.summaryTeam$Player[i]
+        }
+      }
+      
+      if(coef <= 0){
+        outputText <- HTML("<h3><p class=text-danger><strong>There is no player with a significant advantage for this shot...try adjusting the inputs to be more inclusive.<strong></p><h3>")
+      }else{
+        outputText <- HTML(paste("<h3><p class=text-primary><strong>The best player to take this shot is ",bestPlayer,"<strong></p><h3>"))
+      }      
+      outputText
+    })
+
+    ### Best Player Shot Chart ###
+    dt.bestPlayer.cln <- reactive({
+      input$goButton2
+      
+      isolate({
+        shot.team <- input$shotTeam
+        shot.side <- as.character(input$shotSide)
+        
+        if(length(as.character(input$shotType)) == 0){
+          shotType <- as.character(list('Jump Bank Shot','Jump Shot'))
+        }else{
+          shotType <- as.character(input$shotType)
+        }
+        
+        distance.short <- as.numeric(as.character(input$shotDistance)[1])
+        distance.long <- as.numeric(as.character(input$shotDistance)[2])
+        
+        dt.summaryTeam <- isolate(dt.shotData.cln())
+        coef <- 0
+        bestPlayer <- NULL
+        
+        for(i in 1:nrow(dt.summaryTeam)){
+          if(dt.summaryTeam$Inflection_Percentage[i] > coef & dt.summaryTeam$Significance[i] < .1){
+            coef <- dt.summaryTeam$Inflection_Percentage[i]
+            bestPlayer <- dt.summaryTeam$Player[i]
+          }
+        }
+        
+        if(coef > 0){        
+          bestPlayerData <- dt.shot[type %in% shotType & 
+                                    shot_distance >= distance.short & 
+                                    shot_distance <= distance.long & 
+                                    shot_distance <= distance.long & 
+                                    side %in% shot.side &
+                                    player == bestPlayer]
+        }else{
+          bestPlayerData <- dt.shot[type %in% shotType & 
+                                    shot_distance >= distance.short & 
+                                    shot_distance <= distance.long & 
+                                    shot_distance <= distance.long & 
+                                    side %in% shot.side &
+                                    team == shot.team]
+        }        
+        bestPlayerData        
+        })
+      })
+
+    ### GGVIS Plot ###  
+    bestPlayerChart <- reactive({
+      if (is.null(dt.bestPlayer.cln()))
+        return()
+      
+      dt.bestPlayer.cln %>%
+        ggvis(x = ~original_x, 
+              y = ~original_y) %>%
+        layer_points(size := 5, 
+                     size.hover := 20,
+                     size.brush := 20,
+                     fillOpacity := 0.25, 
+                     fillOpacity.hover := 0.8,
+                     fillOpacity.brush := 0.8,
+                     key := ~ID,
+                     stroke = ~result,
+                     strokeWidth := 3) %>%
+        add_legend("stroke", title = "Shot Result") %>%
+        add_axis("x", 
+                 title = "") %>%
+        add_axis("y", 
+                 title = "") %>%
+        add_tooltip(Shot_tooltip,"hover") %>%
+        set_options(hover_duration = 50) %>%
+        set_options(width = 1000, height = 450)    
+    })  
+    
+    bestPlayerChart %>% bind_shiny("bestPlayerChart")
+
 })
