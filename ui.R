@@ -18,7 +18,7 @@ metricsToInclude <- metricsToInclude[metricsToInclude != 'Team'
                                      & metricsToInclude != 'Position']
 
 shinyUI(fluidPage(theme = "bootstrap.css",
-        navbarPage("NBA Data Science Tools",
+        navbarPage("NBA Data Science Tools:",
                    tabPanel("Player Replacement",
                      sidebarLayout(
                        sidebarPanel(
@@ -51,15 +51,17 @@ shinyUI(fluidPage(theme = "bootstrap.css",
                                      selected =  as.character(list('PF','C'))),
                          br(),        
                          h4(tags$p(class="text-danger",'Created by Peter Bertoli')),
-                         HTML("<a href = https://github.com/bertoli12/NBA-Player-Replacement-Shiny-App target=_blank> Source Code </a>")
+                         HTML("<a href = https://github.com/bertoli12/NBA-Player-Replacement-Shiny-App target=_blank> Source Code </a>"),
+                         br(),
+                         h6(HTML('This tool is designed to allow users to find players of similiar caliber based on 2014 YTD metrics that the user is interested in replacing. It uses a dynamic 
+                                <a href="http://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm" class="alert-link">
+                                nearest neighbor cluster</a> algorithm. Please contact <a href="mailto:peter.j.bertoli@gmail.com?subject=NBA Shiny App" class="alert-link">
+                                Peter</a> for questions.'))
                          ),
                        mainPanel(
                                 HTML('<div class="alert alert-dismissable alert-info">
                                 <button type="button" class="close" data-dismiss="alert">×</button>
-                                <h4>This tool is designed to allow users to find players of similiar caliber based on 2014 YTD metrics that the user is interested in replacing. It uses a dynamic 
-                                <a href="http://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm" class="alert-link">
-                                nearest neighbor cluster</a> algorithm. Please contact <a href="mailto:peter.j.bertoli@gmail.com?subject=NBA Shiny App" class="alert-link">
-                                Peter</a> for questions.<h4>
+                                <h4>Please give the tool a moment to load. Be sure to check out the shot finder tool by using the navigation bar at the top of the page!<h4>
                                 </div>'),
                                 br(),
                                 h3('Replacement Player Graph'),
@@ -85,7 +87,7 @@ shinyUI(fluidPage(theme = "bootstrap.css",
                                 h3(''),
                                 selectInput('shotTeam', h4(tags$p(class="text-danger",'Team Name: ')), c(Choose='', shotTeamNames), selected = "PHI"),
                                 sliderInput("shotDistance", h4(tags$p(class="text-danger",'Shot Distance Range: ')), 
-                                            min = 0, max = 40, value = c(10,20), step= 1),
+                                            min = 0, max = 40, value = c(22,26), step= 1),
                                 checkboxGroupInput("shotSide", label = h4(tags$p(class="text-danger",'Shot Location: ')), 
                                                    choices = list("Left Side" = "Left", "Right Side" = "Right"),
                                                    selected = c("Left","Right")),
@@ -95,18 +97,17 @@ shinyUI(fluidPage(theme = "bootstrap.css",
                                             multiple=TRUE, 
                                             selectize=TRUE, 
                                             selected =  as.character(list('Jump Bank Shot','Jump Shot'))),
-                                br(),        
+                                br(),
                                 h4(tags$p(class="text-danger",'Created by Peter Bertoli')),
-                                HTML("<a href = https://github.com/bertoli12/NBA-Player-Replacement-Shiny-App target=_blank> Source Code </a>")
+                                HTML("<a href = https://github.com/bertoli12/NBA-Player-Replacement-Shiny-App target=_blank> Source Code </a>"),
+                                br(),
+                                h6('This tool is designed to allow coaches to find the player who has the highest probability of hitting a shot from a designed play. 
+                                    It looks at all of a teams shots from the 2014-2015 season YTD and then performs GLM regressions for each player who has attemped a similiar shot to determine who should get the ball under a given circumstance.'),
+                                h6('A player must take at least 10% of a teams shots of the desired type and location in order to qualify.')
                               ),
                               mainPanel(
-                                HTML('<div class="alert alert-dismissable alert-info">
-                                      <button type="button" class="close" data-dismiss="alert">×</button>
-                                      <h4>This tool is designed to allow coaches to find the player who has the highest probability of hitting a shot from designed play. 
-                                       It looks at all of a teams shots from the 2014-2015 season YTD and then performs regressions for each player against the rest of the team to determine probability inflections. 
-                                       <h4>
-                                      </div>'),
                                 htmlOutput("dt.bestPlayer"),
+                                h3('Player Shot Chart'),
                                 ggvisOutput("bestPlayerChart"),
                                 br(),
                                 h3('Regression Outputs'),

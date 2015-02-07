@@ -33,11 +33,14 @@ shinyServer(function(input, output, session) {
     all_Shots <- isolate(dt.bestPlayer.cln())
     Shot.tt <- all_Shots[all_Shots$ID == x$ID, ]
     
-    paste0("<b>",Shot.tt$player,"</b><br>",
+    if(Shot.tt$team =='xxx'){
+      paste0("<b>",'Basket',"</b>")
+    }else{    
+      paste0("<b>",Shot.tt$player,"</b><br>",
            "Shot Type: ",Shot.tt$type,"<br>",
-           "Result: ",Shot.tt$result,"<br>",
-           "Distance from Hoop: ",Shot.tt$shot_distance,"<br>"
-    )  
+           "Result: ",Shot.tt$stroke,"<br>",
+           "Distance from Hoop: ",Shot.tt$shot_distance,"<br>")
+    } 
   }
   
   
@@ -189,8 +192,18 @@ shinyServer(function(input, output, session) {
       input$goButton2
       
       isolate({
-        shot.team <- input$shotTeam
-        shot.side <- as.character(input$shotSide)
+        if(nchar(toString(input$shotTeam)) == 3){
+          shot.team <- input$shotTeam
+            }else{
+          shot.team <- as.character('PHI')
+            }
+        
+        if(length(as.character(input$shotSide)) == 0){
+          shot.side <- as.character(list('Left','Right'))
+        }else{
+          shot.side <- as.character(input$shotSide)
+        }
+
         
         if(length(as.character(input$shotType)) == 0){
           shotType <- as.character(list('Jump Bank Shot','Jump Shot'))
@@ -198,9 +211,15 @@ shinyServer(function(input, output, session) {
           shotType <- as.character(input$shotType)
         }
         
-        distance.short <- as.numeric(as.character(input$shotDistance)[1])
-        distance.long <- as.numeric(as.character(input$shotDistance)[2])  
-        distance.average <- (distance.short + distance.long)/2
+        if(as.numeric(as.character(input$shotDistance)[1]) != as.numeric(as.character(input$shotDistance)[2])){
+          distance.short <- as.numeric(as.character(input$shotDistance)[1])
+          distance.long <- as.numeric(as.character(input$shotDistance)[2])  
+          distance.average <- (distance.short + distance.long)/2
+        }else{
+          distance.short <- as.numeric(as.character(input$shotDistance)[1])-1
+          distance.long <- as.numeric(as.character(input$shotDistance)[2])  
+          distance.average <- (distance.short + distance.long)/2
+        }
       
         shotData <- dt.shot[type %in% shotType & 
                               shot_distance >= distance.short & 
@@ -224,14 +243,17 @@ shinyServer(function(input, output, session) {
         Inflection_Percentage <- NULL
         Significance <- NULL
         AIC <- NULL
-        
+        Attempts <- NULL
+                
         for(i in playersToFactor){
           shotData$factor <- 0
+          attemptsCount <- 0
           name <- as.character(i)  
           
           for (i in 1:nrow(shotData)){
             if(shotData$player[i] == name){
               shotData$factor[i] <- 1
+              attemptsCount <- attemptsCount + 1
             }
           }
           
@@ -244,9 +266,10 @@ shinyServer(function(input, output, session) {
           Inflection_Percentage <- as.character(c(Inflection_Percentage, as.character(inflection.total)))
           Significance <- as.character(c(Significance, as.character(round(coef(summary(reg))[,4][3],digits=5))))
           AIC <- as.character(c(AIC, as.character(round(AIC(reg),digits=1))))
+          Attempts <- as.character(c(Attempts, as.character(attemptsCount)))
         }
         
-        dt.summary <- as.data.table(cbind(Player,Inflection_Percentage,Significance,AIC))        
+        dt.summary <- as.data.table(cbind(Player,Inflection_Percentage,Attempts,Significance,AIC))        
       })
     })
     
@@ -264,11 +287,17 @@ shinyServer(function(input, output, session) {
       input$goButton2
       
       dt.summaryTeam <- isolate(dt.shotData.cln())
+      totalshots <- 0
+      
+      for(i in 1:nrow(dt.summaryTeam)){
+        totalshots <- totalshots + as.numeric(dt.summaryTeam$Attempts[i])
+      }     
+      
       coef <- 0
       bestPlayer <- NULL
       
       for(i in 1:nrow(dt.summaryTeam)){
-        if(dt.summaryTeam$Inflection_Percentage[i] > coef & dt.summaryTeam$Significance[i] < .1){
+        if(dt.summaryTeam$Inflection_Percentage[i] > coef & dt.summaryTeam$Significance[i] < .15 & (as.numeric(dt.summaryTeam$Attempts[i])/totalshots) >= .1){
           coef <- dt.summaryTeam$Inflection_Percentage[i]
           bestPlayer <- dt.summaryTeam$Player[i]
         }
@@ -287,8 +316,18 @@ shinyServer(function(input, output, session) {
       input$goButton2
       
       isolate({
-        shot.team <- input$shotTeam
-        shot.side <- as.character(input$shotSide)
+        if(nchar(toString(input$shotTeam)) == 3){
+          shot.team <- input$shotTeam
+        }else{
+          shot.team <- as.character('PHI')
+        }
+        
+        if(length(as.character(input$shotSide)) == 0){
+          shot.side <- as.character(list('Left','Right'))
+        }else{
+          shot.side <- as.character(input$shotSide)
+        }
+        
         
         if(length(as.character(input$shotType)) == 0){
           shotType <- as.character(list('Jump Bank Shot','Jump Shot'))
@@ -296,34 +335,45 @@ shinyServer(function(input, output, session) {
           shotType <- as.character(input$shotType)
         }
         
-        distance.short <- as.numeric(as.character(input$shotDistance)[1])
-        distance.long <- as.numeric(as.character(input$shotDistance)[2])
+        if(as.numeric(as.character(input$shotDistance)[1]) != as.numeric(as.character(input$shotDistance)[2])){
+          distance.short <- as.numeric(as.character(input$shotDistance)[1])
+          distance.long <- as.numeric(as.character(input$shotDistance)[2])  
+          distance.average <- (distance.short + distance.long)/2
+        }else{
+          distance.short <- as.numeric(as.character(input$shotDistance)[1])-1
+          distance.long <- as.numeric(as.character(input$shotDistance)[2])  
+          distance.average <- (distance.short + distance.long)/2
+        }
         
         dt.summaryTeam <- isolate(dt.shotData.cln())
         coef <- 0
         bestPlayer <- NULL
+        totalShots <- 0
         
         for(i in 1:nrow(dt.summaryTeam)){
-          if(dt.summaryTeam$Inflection_Percentage[i] > coef & dt.summaryTeam$Significance[i] < .1){
+          totalShots <- totalShots + as.numeric(dt.summaryTeam$Attempts[i])
+        }        
+        
+        for(i in 1:nrow(dt.summaryTeam)){
+          if(dt.summaryTeam$Inflection_Percentage[i] > coef & dt.summaryTeam$Significance[i] < .1 & (as.numeric(dt.summaryTeam$Attempts[i])/totalShots) >= .1){
             coef <- dt.summaryTeam$Inflection_Percentage[i]
             bestPlayer <- dt.summaryTeam$Player[i]
           }
         }
         
         if(coef > 0){        
-          bestPlayerData <- dt.shot[type %in% shotType & 
+          bestPlayerData <- dt.shot[(type %in% shotType & 
                                     shot_distance >= distance.short & 
                                     shot_distance <= distance.long & 
-                                    shot_distance <= distance.long & 
                                     side %in% shot.side &
-                                    player == bestPlayer]
+                                    player == bestPlayer) | player == 'xxx']
         }else{
-          bestPlayerData <- dt.shot[type %in% shotType & 
+          bestPlayerData <- dt.shot[(type %in% shotType & 
                                     shot_distance >= distance.short & 
                                     shot_distance <= distance.long & 
                                     shot_distance <= distance.long & 
                                     side %in% shot.side &
-                                    team == shot.team]
+                                    team == shot.team) | team == 'xxx']
         }        
         bestPlayerData        
         })
@@ -337,20 +387,23 @@ shinyServer(function(input, output, session) {
       dt.bestPlayer.cln %>%
         ggvis(x = ~original_x, 
               y = ~original_y) %>%
-        layer_points(size := 5, 
-                     size.hover := 20,
+        layer_points(size := ~size, 
+                     size.hover := ~size * 4,
                      size.brush := 20,
-                     fillOpacity := 0.25, 
-                     fillOpacity.hover := 0.8,
+                     fillOpacity := 1, 
+                     fillOpacity.hover := 1,
                      fillOpacity.brush := 0.8,
                      key := ~ID,
-                     stroke = ~result,
+                     stroke = ~stroke,
                      strokeWidth := 3) %>%
         add_legend("stroke", title = "Shot Result") %>%
+        scale_nominal("stroke",
+                      domain = c("Made", "Missed", "Hoop"),
+                      range = c("#1976D2", "#EF1919","#ff7f00")) %>%
         add_axis("x", 
-                 title = "") %>%
+                 title = "Baseline") %>%
         add_axis("y", 
-                 title = "") %>%
+                 title = "Sideline") %>%
         add_tooltip(Shot_tooltip,"hover") %>%
         set_options(hover_duration = 50) %>%
         set_options(width = 1000, height = 450)    
